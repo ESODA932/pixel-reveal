@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pixel Reveal — Guess the Picture</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="scanlines" aria-hidden="true"></div>
+  <div class="crt-vignette" aria-hidden="true"></div>
+
+  <header class="top-bar">
+    <div class="header-brand">
+      <h1 class="logo">PIXEL REVEAL</h1>
+      <button type="button" id="rulesBtn" class="btn header-rules">RULES</button>
+    </div>
+    <div class="stats">
+      <span class="stat hidden" id="categoryStat"><span class="label">CATEGORY</span> <span id="categoryDisplay">—</span></span>
+      <span class="stat"><span class="label">ROUND</span> <span id="roundDisplay">—</span>/5</span>
+      <span class="stat"><span class="label">SCORE</span> <span id="scoreDisplay">0</span></span>
+    </div>
+  </header>
+
+  <main class="game-shell">
+    <section class="panel" id="categoryPanel" aria-label="Choose category">
+      <h2 class="panel-title">PICK A CATEGORY</h2>
+      <p class="muted category-blurb">Five rounds from one theme. Faster guesses score higher.</p>
+      <div class="category-row">
+        <button type="button" class="btn primary category-btn" data-category="tv">TV</button>
+        <button type="button" class="btn primary category-btn" data-category="games">GAMES</button>
+        <button type="button" class="btn primary category-btn" data-category="sports">SPORTS</button>
+      </div>
+    </section>
+
+    <section class="panel image-panel hidden" id="gamePanel" aria-label="Picture reveal">
+      <div class="timer-bar-wrap">
+        <div class="timer-bar" id="timerBar"></div>
+      </div>
+      <div class="image-frame" id="imageFrame">
+        <img id="gameImage" alt="Mystery picture" crossorigin="anonymous" />
+        <canvas id="pixelCanvas" width="320" height="240"></canvas>
+      </div>
+      <p class="hint" id="hintText">Type what you see. Faster = more points!</p>
+    </section>
+
+    <section class="panel input-panel hidden" id="inputPanel">
+      <label class="sr-only" for="guessInput">Your guess</label>
+      <div class="input-row input-row-stack">
+        <textarea
+          id="guessInput"
+          autocomplete="off"
+          placeholder="TYPE YOUR GUESS..."
+          maxlength="200"
+          rows="4"
+        ></textarea>
+        <button type="button" id="submitBtn" class="btn primary">SUBMIT</button>
+      </div>
+      <button type="button" id="skipBtn" class="btn ghost">PASS (0 pts)</button>
+      <p class="feedback" id="feedback" role="status"></p>
+    </section>
+
+    <section class="panel scores-panel">
+      <h2 class="panel-title">LOCAL HIGH SCORES</h2>
+      <ol id="localScores" class="score-list"></ol>
+
+      <h2 class="panel-title">GLOBAL LEADERBOARD</h2>
+      <div id="globalLoading" class="muted">Loading...</div>
+      <ol id="globalScores" class="score-list hidden"></ol>
+      <p id="globalError" class="error-text hidden"></p>
+      <p class="muted small" id="globalHint">
+        Global scores need Supabase (see README). Until then, only local scores are saved.
+      </p>
+    </section>
+  </main>
+
+  <div id="rulesModal" class="modal modal-rules hidden" role="dialog" aria-labelledby="rulesModalTitle" aria-modal="true">
+    <div class="modal-inner modal-inner-rules">
+      <h2 id="rulesModalTitle">HOW TO PLAY</h2>
+      <ul class="rules-list">
+        <li><strong>Pick a category</strong> — TV, Games, or Sports. You get <strong>5 rounds</strong> from that theme.</li>
+        <li>Each image starts <strong>pixelated</strong> and slowly clears over <strong>15 seconds</strong> (watch the bar).</li>
+        <li>Type your guess below the picture and tap <strong>SUBMIT</strong> or press <strong>Enter</strong>. Wrong guesses don’t end the round.</li>
+        <li><strong>Faster correct answers score more</strong> (up to 1000 points per round). Waiting until the end still earns a small minimum if you get it right.</li>
+        <li><strong>Pass</strong> skips the round for 0 points. If you pass or time runs out, the <strong>answer is shown</strong>.</li>
+        <li>After 5 rounds, save your name to the <strong>local</strong> and <strong>global</strong> leaderboards.</li>
+      </ul>
+      <button type="button" id="rulesDismissBtn" class="btn primary">GOT IT</button>
+    </div>
+  </div>
+
+  <div id="nameModal" class="modal hidden" role="dialog" aria-labelledby="nameModalTitle">
+    <div class="modal-inner">
+      <h2 id="nameModalTitle">GAME OVER</h2>
+      <p class="final-score">Total: <span id="finalScore">0</span> pts</p>
+      <label for="playerName">Enter name for leaderboard</label>
+      <input type="text" id="playerName" maxlength="16" placeholder="PLAYER1" />
+      <button type="button" id="saveScoreBtn" class="btn primary">SAVE TO BOARDS</button>
+      <button type="button" id="skipSaveBtn" class="btn ghost">PLAY AGAIN (NO SAVE)</button>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <span>5 rounds · 15s reveal · faster guesses score higher</span>
+  </footer>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
