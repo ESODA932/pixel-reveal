@@ -118,10 +118,39 @@ function resizeCanvasToFrame() {
   ctx.imageSmoothingEnabled = false;
 }
 
-function drawPixelated(progress) {
-  if (!imageBitmap) return;
+// Static reveal state — reset each round
+let revealedPatches = null;
+let patchOrder = null;
+const PATCH_COLS = 20;
+const PATCH_ROWS = 15;
+
+function initStaticState() {
+  const total = PATCH_COLS * PATCH_ROWS;
+  patchOrder = Array.from({ length: total }, (_, i) => i);
+  for (let i = patchOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [patchOrder[i], patchOrder[j]] = [patchOrder[j], patchOrder[i]];
+  }
+  revealedPatches = new Uint8Array(total);
+}
+
+function drawStatic(progress) {
+  if (!imageBitmap || !patchOrder) return;
+
   const cw = els.pixelCanvas.clientWidth || 320;
   const ch = els.pixelCanvas.clientHeight || 240;
+
+  const pEff = Math.pow(progress, 1.8);
+  const total = PATCH_COLS * PATCH_ROWS;
+  const targetRevealed = Math.floor(pEff * total);
+
+  for (let i = 0; i < targetRevealed; i++) {
+    revealedPatches[patchOrder[i]] = 1;
+  }
+
+  const patchW = cw / PATCH_COLS;
+  const patchH = ch / PATCH_ROWS;
+
   const iw = imageBitmap.width;
   const ih = imageBitmap.height;
   const scale = Math.min(cw / iw, ch / ih);
@@ -130,32 +159,45 @@ function drawPixelated(progress) {
   const ox = (cw - dw) / 2;
   const oy = (ch - dh) / 2;
 
-  // Pixelation difficulty: startBlocks controls max block size at t=0.
-  // Higher = more pixelated start. Exponent controls how long it stays blurry.
-  const startBlocks = 48;
-  const pEff = Math.pow(progress, 1.4); // stays blocky longer, clears fast at the end
-  const blockSize = Math.max(1, Math.round(startBlocks * (1 - pEff) + 1 * pEff));
-  const smallW = Math.max(1, Math.ceil(dw / blockSize));
-  const smallH = Math.max(1, Math.ceil(dh / blockSize));
-
-  const off = document.createElement("canvas");
-  off.width = smallW;
-  off.height = smallH;
-  const octx = off.getContext("2d");
-  octx.imageSmoothingEnabled = false;
-  octx.drawImage(imageBitmap, 0, 0, iw, ih, 0, 0, smallW, smallH);
-
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, cw, ch);
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(off, 0, 0, smallW, smallH, ox, oy, dw, dh);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(imageBitmap, 0, 0, iw, ih, ox, oy, dw, dh);
+
+  const noiseCanvas = document.createElement("canvas");
+  noiseCanvas.width = cw;
+  noiseCanvas.height = ch;
+  const nctx = noiseCanvas.getContext("2d");
+  const imageData = nctx.createImageData(cw, ch);
+  const data = imageData.data;
+
+  for (let i = 0; i < data.length; i += 4) {
+    data[i]     = Math.random() * 255;
+    data[i + 1] = Math.random() * 255;
+    data[i + 2] = Math.random() * 255;
+    data[i + 3] = 255;
+  }
+  nctx.putImageData(imageData, 0, 0);
+
+  for (let row = 0; row < PATCH_ROWS; row++) {
+    for (let col = 0; col < PATCH_COLS; col++) {
+      const idx = row * PATCH_COLS + col;
+      if (revealedPatches[idx]) continue;
+      const px = Math.floor(col * patchW);
+      const py = Math.floor(row * patchH);
+      const pw = Math.ceil(patchW);
+      const ph = Math.ceil(patchH);
+      ctx.drawImage(noiseCanvas, px, py, pw, ph, px, py, pw, ph);
+    }
+  }
 }
+
 
 function tick() {
   if (gameOver || !currentRound) return;
   const elapsed = performance.now() - roundStart;
   const p = Math.min(1, elapsed / ROUND_MS);
-  drawPixelated(p);
+  drawStatic(p);
 
   const remaining = 1 - p;
   els.timerBar.style.transform = `scaleX(${remaining})`;
@@ -194,6 +236,7 @@ async function startRound() {
   els.guessInput.value = "";
   els.guessInput.focus();
 
+  roundStart = performance.now();
   resizeCanvasToFrame();
 
   try {
@@ -204,9 +247,8 @@ async function startRound() {
     const img = await loadImageData(imgUrl);
     els.gameImage.src = imgUrl;
     imageBitmap = img;
-    // Start the timer only after the image is ready so fetch time doesn't cost the player
-    roundStart = performance.now();
-    drawPixelated(0);
+    initStaticState();
+    drawStatic(0);
   } catch {
     els.feedback.textContent = "Could not load image — skipping.";
     els.feedback.classList.add("bad");
@@ -487,7 +529,7 @@ window.addEventListener("resize", () => {
     resizeCanvasToFrame();
     const elapsed = performance.now() - roundStart;
     const p = Math.min(1, elapsed / ROUND_MS);
-    drawPixelated(p);
+    drawStatic(p);
   }
 });
 
