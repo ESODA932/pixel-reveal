@@ -121,8 +121,8 @@ function resizeCanvasToFrame() {
 // Static reveal state — reset each round
 let revealedPatches = null;
 let patchOrder = null;
-const PATCH_COLS = 20;
-const PATCH_ROWS = 15;
+const PATCH_COLS = 10;
+const PATCH_ROWS = 8;
 
 function initStaticState() {
   const total = PATCH_COLS * PATCH_ROWS;
