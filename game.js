@@ -514,15 +514,6 @@ async function initImages() {
 
 await initImages();
 
-// Background music — starts on first user interaction (browser autoplay policy)
-const music = document.getElementById("bgMusic");
-if (music) {
-  music.volume = 0.3;
-  document.addEventListener("click", () => {
-    if (music.paused) music.play();
-  }, { once: true });
-}
-
 renderLocalScores();
 fetchGlobalLeaderboard();
 showCategoryPicker();
