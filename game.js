@@ -118,39 +118,38 @@ function resizeCanvasToFrame() {
   ctx.imageSmoothingEnabled = false;
 }
 
-// Static reveal state — reset each round
-let revealedPatches = null;
-let patchOrder = null;
-const PATCH_COLS = 10;
-const PATCH_ROWS = 8;
+// Offscreen noise canvas — regenerated periodically for performance
+let _noiseCanvas = null;
+let _noiseFrame = 0;
 
-function initStaticState() {
-  const total = PATCH_COLS * PATCH_ROWS;
-  patchOrder = Array.from({ length: total }, (_, i) => i);
-  for (let i = patchOrder.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [patchOrder[i], patchOrder[j]] = [patchOrder[j], patchOrder[i]];
+function getNoiseCanvas(cw, ch) {
+  // Regenerate noise every 2 frames to save CPU while keeping flicker alive
+  _noiseFrame++;
+  if (!_noiseCanvas || _noiseCanvas.width !== cw || _noiseCanvas.height !== ch || _noiseFrame % 2 === 0) {
+    if (!_noiseCanvas) {
+      _noiseCanvas = document.createElement("canvas");
+    }
+    _noiseCanvas.width = cw;
+    _noiseCanvas.height = ch;
+    const nctx = _noiseCanvas.getContext("2d");
+    const imageData = nctx.createImageData(cw, ch);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const v = Math.random() * 255;
+      data[i]     = v * (0.6 + Math.random() * 0.8); // R — slightly varied for color
+      data[i + 1] = v * (0.6 + Math.random() * 0.8); // G
+      data[i + 2] = v * (0.6 + Math.random() * 0.8); // B
+      data[i + 3] = 255;
+    }
+    nctx.putImageData(imageData, 0, 0);
   }
-  revealedPatches = new Uint8Array(total);
+  return _noiseCanvas;
 }
 
-function drawStatic(progress) {
-  if (!imageBitmap || !patchOrder) return;
-
+function drawPixelated(progress) {
+  if (!imageBitmap) return;
   const cw = els.pixelCanvas.clientWidth || 320;
   const ch = els.pixelCanvas.clientHeight || 240;
-
-  const pEff = Math.pow(progress, 1.8);
-  const total = PATCH_COLS * PATCH_ROWS;
-  const targetRevealed = Math.floor(pEff * total);
-
-  for (let i = 0; i < targetRevealed; i++) {
-    revealedPatches[patchOrder[i]] = 1;
-  }
-
-  const patchW = cw / PATCH_COLS;
-  const patchH = ch / PATCH_ROWS;
-
   const iw = imageBitmap.width;
   const ih = imageBitmap.height;
   const scale = Math.min(cw / iw, ch / ih);
@@ -159,45 +158,45 @@ function drawStatic(progress) {
   const ox = (cw - dw) / 2;
   const oy = (ch - dh) / 2;
 
+  // ── 1. Pixelation: starts very blocky, sharpens as signal comes in ──
+  // Slow easing early so it stays unrecognisable, then clears fast at the end
+  const startBlocks = 40;
+  const pEff = Math.pow(progress, 1.8);
+  const blockSize = Math.max(1, Math.round(startBlocks * (1 - pEff) + 1 * pEff));
+  const smallW = Math.max(1, Math.ceil(dw / blockSize));
+  const smallH = Math.max(1, Math.ceil(dh / blockSize));
+
+  // Draw pixelated image to main canvas
+  const off = document.createElement("canvas");
+  off.width = smallW;
+  off.height = smallH;
+  const octx = off.getContext("2d");
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(imageBitmap, 0, 0, iw, ih, 0, 0, smallW, smallH);
+
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, cw, ch);
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(imageBitmap, 0, 0, iw, ih, ox, oy, dw, dh);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0, 0, smallW, smallH, ox, oy, dw, dh);
 
-  const noiseCanvas = document.createElement("canvas");
-  noiseCanvas.width = cw;
-  noiseCanvas.height = ch;
-  const nctx = noiseCanvas.getContext("2d");
-  const imageData = nctx.createImageData(cw, ch);
-  const data = imageData.data;
+  // ── 2. Static overlay: full strength early, fades away as signal locks in ──
+  // Static opacity goes from 0.92 → 0 using its own faster easing
+  const staticEff = Math.pow(progress, 1.4);
+  const staticAlpha = Math.max(0, 0.92 * (1 - staticEff));
 
-  for (let i = 0; i < data.length; i += 4) {
-    data[i]     = Math.random() * 255;
-    data[i + 1] = Math.random() * 255;
-    data[i + 2] = Math.random() * 255;
-    data[i + 3] = 255;
-  }
-  nctx.putImageData(imageData, 0, 0);
-
-  for (let row = 0; row < PATCH_ROWS; row++) {
-    for (let col = 0; col < PATCH_COLS; col++) {
-      const idx = row * PATCH_COLS + col;
-      if (revealedPatches[idx]) continue;
-      const px = Math.floor(col * patchW);
-      const py = Math.floor(row * patchH);
-      const pw = Math.ceil(patchW);
-      const ph = Math.ceil(patchH);
-      ctx.drawImage(noiseCanvas, px, py, pw, ph, px, py, pw, ph);
-    }
+  if (staticAlpha > 0.01) {
+    const noiseCanvas = getNoiseCanvas(cw, ch);
+    ctx.globalAlpha = staticAlpha;
+    ctx.drawImage(noiseCanvas, 0, 0);
+    ctx.globalAlpha = 1.0;
   }
 }
-
 
 function tick() {
   if (gameOver || !currentRound) return;
   const elapsed = performance.now() - roundStart;
   const p = Math.min(1, elapsed / ROUND_MS);
-  drawStatic(p);
+  drawPixelated(p);
 
   const remaining = 1 - p;
   els.timerBar.style.transform = `scaleX(${remaining})`;
@@ -247,8 +246,7 @@ async function startRound() {
     const img = await loadImageData(imgUrl);
     els.gameImage.src = imgUrl;
     imageBitmap = img;
-    initStaticState();
-    drawStatic(0);
+    drawPixelated(0);
   } catch {
     els.feedback.textContent = "Could not load image — skipping.";
     els.feedback.classList.add("bad");
@@ -529,7 +527,7 @@ window.addEventListener("resize", () => {
     resizeCanvasToFrame();
     const elapsed = performance.now() - roundStart;
     const p = Math.min(1, elapsed / ROUND_MS);
-    drawStatic(p);
+    drawPixelated(p);
   }
 });
 
